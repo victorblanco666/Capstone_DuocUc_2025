@@ -1,45 +1,51 @@
-from flask import Flask, jsonify, render_template, request ,redirect
-import requests , urllib3 , string , random
+import os
+import random
+import string
 
-
+import requests
+from flask import Flask, jsonify, redirect, render_template, request
 
 app = Flask(__name__, template_folder='Frontend', static_folder='Frontend/Static/css')
+API_BASE_URL = os.getenv("API_BASE_URL", "https://localhost:5000").rstrip("/")
+API_VERIFY_SSL = os.getenv("API_VERIFY_SSL", "true").lower() not in {"0", "false", "no"}
+APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:5001").rstrip("/")
 
-# Deshabilitar advertencias de SSL para urllib3 (solo para desarrollo)
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def api_url(path):
+    return f"{API_BASE_URL}/{path.lstrip('/')}"
 
 @app.route('/')
 def vista():
-    productos_url = 'https://localhost:5000/api/producto'
-    region_url = 'https://localhost:5000/api/Region'
-    provincia_url = 'https://localhost:5000/api/Provincia'
-    comuna_url = 'https://localhost:5000/api/Comuna'
-    sucursal_url = 'https://localhost:5000/api/Sucursal'
-    stock_url = 'https://localhost:5000/api/Stock'  # NUEVA URL PARA STOCK
+    productos_url = api_url('/api/producto')
+    region_url = api_url('/api/Region')
+    provincia_url = api_url('/api/Provincia')
+    comuna_url = api_url('/api/Comuna')
+    sucursal_url = api_url('/api/Sucursal')
+    stock_url = api_url('/api/Stock')
 
     try:
         # Obtener regiones
-        response_regiones = requests.get(region_url, verify=False)
+        response_regiones = requests.get(region_url, verify=API_VERIFY_SSL)
         regiones = response_regiones.json() if response_regiones.status_code == 200 else []
 
         # Obtener provincias
-        response_provincias = requests.get(provincia_url, verify=False)
+        response_provincias = requests.get(provincia_url, verify=API_VERIFY_SSL)
         provincias = response_provincias.json() if response_provincias.status_code == 200 else []
 
         # Obtener comunas
-        response_comunas = requests.get(comuna_url, verify=False)
+        response_comunas = requests.get(comuna_url, verify=API_VERIFY_SSL)
         comunas = response_comunas.json() if response_comunas.status_code == 200 else []
 
         # Obtener sucursales
-        response_sucursales = requests.get(sucursal_url, verify=False)
+        response_sucursales = requests.get(sucursal_url, verify=API_VERIFY_SSL)
         sucursales = response_sucursales.json() if response_sucursales.status_code == 200 else []
 
         # Obtener productos
-        response_productos = requests.get(productos_url, verify=False)
+        response_productos = requests.get(productos_url, verify=API_VERIFY_SSL)
         productos = response_productos.json() if response_productos.status_code == 200 else []
 
         # Obtener stock
-        response_stock = requests.get(stock_url, verify=False)
+        response_stock = requests.get(stock_url, verify=API_VERIFY_SSL)
         stock_data = response_stock.json() if response_stock.status_code == 200 else []
 
         # Crear un diccionario para asociar el stock con los productos
@@ -69,23 +75,23 @@ def vista():
 
 @app.route('/pago', methods=['GET', 'POST'])
 def pago():
-    transbank_url = 'https://localhost:5000/api/Transbank/Crear_transaccion'
-    cliente_url = 'https://localhost:5000/api/Cliente'
-    region_url = 'https://localhost:5000/api/Region'
-    provincia_url = 'https://localhost:5000/api/Provincia'
-    comuna_url = 'https://localhost:5000/api/Comuna'
+    transbank_url = api_url('/api/Transbank/Crear_transaccion')
+    cliente_url = api_url('/api/Cliente')
+    region_url = api_url('/api/Region')
+    provincia_url = api_url('/api/Provincia')
+    comuna_url = api_url('/api/Comuna')
 
     def generar_codigo(prefijo, longitud=8):
         return f"{prefijo}{''.join(random.choices(string.digits, k=longitud))}"
 
     try:
-        response_regiones = requests.get(region_url, verify=False)
+        response_regiones = requests.get(region_url, verify=API_VERIFY_SSL)
         regiones = response_regiones.json() if response_regiones.status_code == 200 else []
 
-        response_provincias = requests.get(provincia_url, verify=False)
+        response_provincias = requests.get(provincia_url, verify=API_VERIFY_SSL)
         provincias = response_provincias.json() if response_provincias.status_code == 200 else []
 
-        response_comunas = requests.get(comuna_url, verify=False)
+        response_comunas = requests.get(comuna_url, verify=API_VERIFY_SSL)
         comunas = response_comunas.json() if response_comunas.status_code == 200 else []
     except requests.exceptions.RequestException as e:
         return f"Error de conexión: {e}"
@@ -94,7 +100,7 @@ def pago():
         montoPagar = float(request.form['montoPagar'])
         buy_order = generar_codigo("ORD", 8)
         session_id = generar_codigo("SESSION", 10)
-        return_url = "http://127.0.0.1:5001/confirmar_pago"
+        return_url = f"{APP_BASE_URL}/confirmar_pago"
 
         datos_cliente = {
             "numRun": int(request.form['numRun']),
@@ -111,7 +117,7 @@ def pago():
         }
 
         try:
-            response_cliente = requests.post(cliente_url, json=datos_cliente, verify=False)
+            response_cliente = requests.post(cliente_url, json=datos_cliente, verify=API_VERIFY_SSL)
             if response_cliente.status_code != 201:
                 return jsonify({"error": "Error al registrar el cliente"}), 500
         except Exception as e:
@@ -125,7 +131,7 @@ def pago():
         }
 
         try:
-            response = requests.post(transbank_url, json=datos_transbank, verify=False)
+            response = requests.post(transbank_url, json=datos_transbank, verify=API_VERIFY_SSL)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("exito"):
@@ -157,13 +163,13 @@ def recibir_token():
 
 @app.route('/confirmar_transaccion/<token>', methods=['GET'])
 def confirmar_transaccion(token):
-    confirmacion_url = f'https://localhost:5000/api/Transbank/Confirmar_transaccion/{token}'
-    tarjeta_url = 'https://localhost:5000/api/Tarjeta'
-    venta_url = 'https://localhost:5000/api/Ventas/RealizarVenta'
+    confirmacion_url = api_url(f'/api/Transbank/Confirmar_transaccion/{token}')
+    tarjeta_url = api_url('/api/Tarjeta')
+    venta_url = api_url('/api/Ventas/RealizarVenta')
 
     try:
         # 1️⃣ Hacer el GET para confirmar la transacción
-        response = requests.get(confirmacion_url, verify=False)
+        response = requests.get(confirmacion_url, verify=API_VERIFY_SSL)
         if response.status_code == 200:
             data = response.json()
             if data.get("exito"):
@@ -176,7 +182,7 @@ def confirmar_transaccion(token):
                     cod_tarjeta = int(card_number)  # Convertimos a int
 
                     # 2️⃣ Verificar si el `codTransaccion` ya está registrado
-                    response_verificar = requests.get(f"{tarjeta_url}/{cod_transaccion}", verify=False)
+                    response_verificar = requests.get(f"{tarjeta_url}/{cod_transaccion}", verify=API_VERIFY_SSL)
 
                     if response_verificar.status_code == 200:
                         print("🔍 La transacción ya está registrada, no es necesario volver a insertarla.")
@@ -187,7 +193,7 @@ def confirmar_transaccion(token):
                             "numTarjeta": cod_tarjeta,
                             "nombreTransaccion": "Compra Online"
                         }
-                        response_tarjeta = requests.post(tarjeta_url, json=datos_tarjeta, verify=False)
+                        response_tarjeta = requests.post(tarjeta_url, json=datos_tarjeta, verify=API_VERIFY_SSL)
 
                         if response_tarjeta.status_code == 201:
                             print("✅ Transacción registrada exitosamente")
@@ -210,7 +216,7 @@ def confirmar_transaccion(token):
                         ]
                     }
 
-                    response_venta = requests.post(venta_url, json=datos_venta, verify=False)
+                    response_venta = requests.post(venta_url, json=datos_venta, verify=API_VERIFY_SSL)
 
                     if response_venta.status_code == 201:
                         print("✅ Venta registrada exitosamente")
@@ -233,4 +239,8 @@ def confirmar_transaccion(token):
 
 
 if __name__ == '__main__':
-    app.run(port=5001, debug=True)
+    app.run(
+        host=os.getenv("FLASK_HOST", "127.0.0.1"),
+        port=int(os.getenv("PORT", "5001")),
+        debug=os.getenv("FLASK_DEBUG", "false").lower() in {"1", "true", "yes"},
+    )
